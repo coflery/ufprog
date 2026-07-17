@@ -79,6 +79,19 @@ static const struct nand_page_layout w25nxxk_ecc8bit_layout = ECC_PAGE_LAYOUT(
 	ECC_PAGE_UNUSED_BYTES(3),
 );
 
+static const struct nand_page_layout w25n01kw_layout = ECC_PAGE_LAYOUT(
+	ECC_PAGE_DATA_BYTES(2048),
+	ECC_PAGE_MARKER_BYTES(2),
+	ECC_PAGE_OOB_FREE_BYTES(2),
+	ECC_PAGE_OOB_DATA_BYTES(12),
+	ECC_PAGE_OOB_FREE_BYTES(4),
+	ECC_PAGE_OOB_DATA_BYTES(12),
+	ECC_PAGE_OOB_FREE_BYTES(4),
+	ECC_PAGE_OOB_DATA_BYTES(12),
+	ECC_PAGE_OOB_FREE_BYTES(4),
+	ECC_PAGE_OOB_DATA_BYTES(12),
+);
+
 static const struct nand_page_layout w25nxxjw_layout = ECC_PAGE_LAYOUT(
 	ECC_PAGE_DATA_BYTES(2048),
 	ECC_PAGE_MARKER_BYTES(2),
@@ -169,6 +182,19 @@ static const struct spi_nand_flash_part winbond_parts[] = {
 		   SNAND_RD_OPCODES(default_rd_opcodes_4d),
 		   SNAND_SPI_MAX_SPEED_MHZ(104),
 		   SNAND_PAGE_LAYOUT(&w25n01kv_layout),
+		   NAND_OTP_INFO(&w25n_otp),
+		   SNAND_OPS(&w25n01kv_ops),
+	),
+
+	SNAND_PART("W25N01KW", SNAND_ID(SNAND_ID_DUMMY, 0xef, 0xbe, 0x21), &snand_memorg_1g_2k_64, /* 1.8V */
+		   NAND_ECC_REQ(512, 4),
+		   SNAND_FLAGS(SNAND_F_GENERIC_UID),
+		   SNAND_QE_CR_BIT0, SNAND_ECC_CR_BIT4, SNAND_OTP_CR_BIT6,
+		   SNAND_RD_IO_CAPS(BIT_SPI_MEM_IO_1_1_1 | BIT_SPI_MEM_IO_X2 | BIT_SPI_MEM_IO_X4),
+		   SNAND_PL_IO_CAPS(BIT_SPI_MEM_IO_1_1_1 | BIT_SPI_MEM_IO_1_1_4),
+		   SNAND_RD_OPCODES(default_rd_opcodes_4d),
+		   SNAND_SPI_MAX_SPEED_MHZ(104),
+		   SNAND_PAGE_LAYOUT(&w25n01kw_layout),
 		   NAND_OTP_INFO(&w25n_otp),
 		   SNAND_OPS(&w25n01kv_ops),
 	),
