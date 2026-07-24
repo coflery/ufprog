@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libusb-1.0-0-dev \
+            libhidapi-dev \
+            libjson-c-dev \
+            pkg-config
+
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-json-c
+            mingw-w64-x86_64-libusb
+            mingw-w64-x86_64-hidapi
+            mingw-w64-x86_64-pkg-config
+
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --build build --parallel
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build
+
+      - name: Install (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --install build --prefix install --config Release
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --install build --prefix install
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          tar czf "ufprog-${VERSION}-linux-x64.tar.gz" -C install .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          tar czf "ufprog-${VERSION}-windows-x64.tar.gz" -C install .
+
+      - name: Upload Release Archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ runner.os }}
+          path: |
+            ufprog-*.tar.gz
+            ufprog-*.zip
+
+  create-release:
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download All Release Archives
+        uses: actions/download-artifact@v5
+        with:
+          path: release-artifacts
+
+      - name: Display Structure
+        run: find release-artifacts -type f
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
