@@ -1,0 +1,124 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.archive-suffix }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive-suffix: linux-x64
+            cmake-extra: ""
+            deps: >
+              libusb-1.0-0-dev
+              libhidapi-dev
+              libjson-c-dev
+              pkg-config
+
+          - os: windows-latest
+            archive-suffix: windows-x64
+            cmake-extra: -G "MinGW Makefiles"
+            deps: ""
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.deps }}
+
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-json-c
+            mingw-w64-x86_64-libusb
+            mingw-w64-x86_64-hidapi
+            mingw-w64-x86_64-pkg-config
+
+      - name: Configure CMake
+        run: cmake -B build ${{ matrix.cmake-extra }} -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Install
+        run: cmake --install build --prefix install
+
+      - name: Bundle Runtime DLLs (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Copy dependency DLLs from MSYS2 into the package
+          cp -v /mingw64/bin/libjson-c-5.dll     install/
+          cp -v /mingw64/bin/libusb-1.0.dll       install/
+          cp -v /mingw64/bin/libhidapi-0.dll      install/
+          # MinGW runtime (required by the above)
+          cp -v /mingw64/bin/libgcc_s_seh-1.dll   install/
+          cp -v /mingw64/bin/libwinpthread-1.dll  install/
+
+      - name: Upload Artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ufprog-build-${{ runner.os == 'Windows' && 'windows' || 'linux' }}
+          path: install/
+          retention-days: 5
+
+      - name: Package (Release)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          tar czf "ufprog-${VERSION}-${{ matrix.archive-suffix }}.tar.gz" -C install .
+
+      - name: Upload Release Archive
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.archive-suffix }}
+          path: ufprog-*.tar.gz
+
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release-artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
